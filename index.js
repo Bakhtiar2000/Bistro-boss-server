@@ -46,6 +46,7 @@ async function run() {
     const usersCollection = client.db('bistroDb').collection('users')
     const reviewCollection = client.db('bistroDb').collection('reviews')
     const cartCollection = client.db('bistroDb').collection('carts')
+    const paymentCollection = client.db('bistroDb').collection('payments')
 
     app.post('/jwt', (req, res) => {
       const user = req.body
@@ -170,11 +171,12 @@ async function run() {
       res.send(result)
     })
 
-    //Create payment intent
 
-    app.post('create-payment-intent', async(req, res)=> {
+    //Create payment intent
+    app.post('/create-payment-intent',verifyJWT, async(req, res)=> {
       const {price}= req.body
-      const amount = price*100 //as price is count in cents
+      const amount = price*100 //Price is getting counted in cents. We are converting it into notes multiplying by 100
+      // console.log(price, amount)
       const paymentIntent= await stripe.paymentIntents.create({
         amount: amount,
         currency: 'usd',
@@ -183,6 +185,34 @@ async function run() {
 
       res.send({
         clientSecret: paymentIntent.client_secret
+      })
+    })
+
+
+    //Payment related API
+    app.post('/payments', async(req, res)=> {
+      const payment= req.body
+      const insertResult= await paymentCollection.insertOne(payment)
+
+      const query={_id: {$in: payment.cartItems.map(id=> new ObjectId(id))}}
+      const deleteResult= await cartCollection.deleteMany(query)
+      
+      res.send({insertResult, deleteResult})
+    })
+
+
+    app.get('/admin-stats', verifyJWT, verifyAdmin, async(req, res)=> {
+      const users= await usersCollection.estimatedDocumentCount()
+      const products= await menuCollection.estimatedDocumentCount()
+      const orders= await paymentCollection.estimatedDocumentCount()
+
+      const payments = await paymentCollection.find().toArray();
+      const revenue = payments.reduce( ( sum, payment) => sum + payment.price, 0)
+      res.send({
+        users,
+        products,
+        orders,
+        revenue
       })
     })
 
