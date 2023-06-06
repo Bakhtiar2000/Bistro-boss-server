@@ -173,11 +173,11 @@ async function run() {
 
 
     //Create payment intent
-    app.post('/create-payment-intent',verifyJWT, async(req, res)=> {
-      const {price}= req.body
-      const amount = price*100 //Price is getting counted in cents. We are converting it into notes multiplying by 100
+    app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+      const { price } = req.body
+      const amount = parseInt(price * 100) //Price is getting counted in cents. We are converting it into notes multiplying by 100
       // console.log(price, amount)
-      const paymentIntent= await stripe.paymentIntents.create({
+      const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
         currency: 'usd',
         payment_method_types: ['card']
@@ -190,24 +190,24 @@ async function run() {
 
 
     //Payment related API
-    app.post('/payments', async(req, res)=> {
-      const payment= req.body
-      const insertResult= await paymentCollection.insertOne(payment)
+    app.post('/payments', async (req, res) => {
+      const payment = req.body
+      const insertResult = await paymentCollection.insertOne(payment)
 
-      const query={_id: {$in: payment.cartItems.map(id=> new ObjectId(id))}}
-      const deleteResult= await cartCollection.deleteMany(query)
-      
-      res.send({insertResult, deleteResult})
+      const query = { _id: { $in: payment.cartItems.map(id => new ObjectId(id)) } }
+      const deleteResult = await cartCollection.deleteMany(query)
+
+      res.send({ insertResult, deleteResult })
     })
 
 
-    app.get('/admin-stats', verifyJWT, verifyAdmin, async(req, res)=> {
-      const users= await usersCollection.estimatedDocumentCount()
-      const products= await menuCollection.estimatedDocumentCount()
-      const orders= await paymentCollection.estimatedDocumentCount()
+    app.get('/admin-stats', verifyJWT, verifyAdmin, async (req, res) => {
+      const users = await usersCollection.estimatedDocumentCount()
+      const products = await menuCollection.estimatedDocumentCount()
+      const orders = await paymentCollection.estimatedDocumentCount()
 
       const payments = await paymentCollection.find().toArray();
-      const revenue = payments.reduce( ( sum, payment) => sum + payment.price, 0)
+      const revenue = payments.reduce((sum, payment) => sum + payment.price, 0)
       res.send({
         users,
         products,
@@ -216,17 +216,28 @@ async function run() {
       })
     })
 
-    app.get('/order-stats', verifyJWT, verifyAdmin, async(req, res) =>{
+    app.get('/order-stats', async (req, res) => {
       const pipeline = [
         {
+          $addFields: {
+            menuItemsObjectIds: {
+              $map: {
+                input: '$menuItems',
+                as: 'itemId',
+                in: { $toObjectId: '$$itemId' }
+              }
+            }
+          }
+        },
+    {
           $lookup: {
             from: 'menu',
-            localField: 'menuItems',
+            localField: 'menuItemsObjectIds',
             foreignField: '_id',
             as: 'menuItemsData'
           }
         },
-        {
+    {
           $unwind: '$menuItemsData'
         },
         {
@@ -236,7 +247,7 @@ async function run() {
             total: { $sum: '$menuItemsData.price' }
           }
         },
-        {
+    {
           $project: {
             category: '$_id',
             count: 1,
@@ -251,9 +262,9 @@ async function run() {
 
     })
 
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  }
+  await client.db("admin").command({ ping: 1 });
+  console.log("Pinged your deployment. You successfully connected to MongoDB!");
+}
 
   finally { }
 }
