@@ -82,7 +82,7 @@ async function run() {
         return res.send({ message: 'User already exists' })
       }
       const result = await usersCollection.insertOne(user)
-      res.send(query)
+      res.send(result)
     })
 
     app.get('/users/admin/:email', verifyJWT, async (req, res) => {
